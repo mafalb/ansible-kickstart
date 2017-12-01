@@ -1,0 +1,15 @@
+---
+
+# we sort by domain
+#
+- name: directory for {{ domain }}
+  file:
+    path: files/{{ domain }}
+    state: directory
+
+- name: kickstart file is up to date
+  template:
+    src: templates/ks.j2
+    dest: files/{{ domain }}/{{ inventory_hostname_short }}.ks
+  with_first_found:
+    - default.ks
