@@ -1,0 +1,4 @@
+---
+
+bootstrap:
+  external_bootstrap_file: false

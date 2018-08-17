@@ -9,7 +9,12 @@
 
 - name: kickstart file is up to date
   template:
-    src: templates/ks.j2
+    src: default.ks
     dest: files/{{ domain }}/{{ inventory_hostname_short }}.ks
-  with_first_found:
-    - default.ks
+  when: not bootstrap.external_bootstrap_file
+
+- name: kickstart file is up to date
+  template:
+    src: "{{ bootstrap.external_kickstart_file }}"
+    dest: files/{{ domain }}/{{ inventory_hostname_short }}.ks
+  when: bootstrap.external_bootstrap_file

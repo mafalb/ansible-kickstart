@@ -3,20 +3,20 @@
 install
 text
 reboot
-url --mirrorlist http://mirrorlist.centos.org/?cc=at&arch=x86_64&repo=os&release=7
-repo --name extras --mirrorlist http://mirrorlist.centos.org/?cc=at&arch=x86_64&repo=extras&release=7
-repo --name updates --mirrorlist http://mirrorlist.centos.org/?cc=at&arch=x86_64&repo=updates&release=7
-repo --name epel --mirrorlist http://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=x86_64
+url --mirrorlist http://mirrorlist.centos.org/?cc=at&arch=$basearch&repo=os&release=$releasever
+repo --name updates --mirrorlist http://mirrorlist.centos.org/?cc=at&arch=$basearch&repo=updates&release=$releasever
+#repo --name extras --mirrorlist http://mirrorlist.centos.org/?cc=at&arch=$basearch&repo=extras&release=$releasever
+#repo --name epel --mirrorlist http://mirrors.fedoraproject.org/metalink?repo=epel-$releasever&arch=$basearch
 
 # System language
 lang en_GB.UTF-8 --addsupport=de_AT.UTF-8
 keyboard --vckeymap=at-nodeadkeys --xlayouts='at (nodeadkeys)','us','at (mac)','gb (mac_intl)'
 timezone Etc/UTC --isUtc
 
-sshpw --username root --lock --iscrypted $6$C74dtlSq.DLs6xPr$FprWENXxBbFJVQcfEfeuVIOQ8znO0HirbRzzgnsF8s5.Ia.E5vPUXPvsQ.yD5yFk.yCHB8ecfVvlkJ6.8Uuwj0
-sshpw --username inst --iscrypted $6$dE0toHpyv7fnbqYi$fqLzbpQ3J3T.a3E7c7qrGmqm1B9U9eijR2Qw6olwTU.5n7QYuyAB4yOPxcwGjBmRzKXyMCxzBJ1G0FP4RzwHp1
-rootpw --iscrypted $6$5vzcYesbqfo04ICK$uYmjKw6OSZ6Zzftvi8wasbNs2Ffm6MIUi3OwJg2urla9OhvaFV3Wp6t5XDC31jr7eGXyUBvzeAwEOtpA59QYw/
-user --groups=wheel --name=mafalb --password=$6$OcP0K8rLifAEWkgG$/g7OgIzKFALBVP0He1f838WYaKeOdMdZ3dqVWFHvmt0M93Caq8FbMdjU1Oz6X6UaClzi8L4vEtdyoruEJoCof0 --iscrypted --uid=10000 --gecos="Markus Falb" --gid=10000
+sshpw --username root --lock --iscrypted {{ bootstrap.initialpw.root }}
+sshpw --username inst --iscrypted {{ bootstrap.initialpw.root }}
+rootpw --iscrypted {{ bootstrap.initialpw.root }}
+user --groups wheel --name {{ bootstrap.initial_user }} --uid 10000 --gid 10000 --iscrypted {{ bootstrap.initialpw.initial_user }}
 
 
 firewall --enabled --service=ssh
@@ -27,13 +27,27 @@ bootloader "crashkernel=auto" --location=mbr
 firstboot --disable
 skipx
 
-network --device link {% if not ipv4 %}--noipv4{% endif %} --hostname={{ fqdn }} --ipv6={{ ipv6_address }} --ipv6gateway={{ ipv6_gateway }} --nameserver {{ nameserver|join(",") }} --onboot yes
+network --device link {% if not bootstrap.ipv4 %}--noipv4{% endif %} --hostname={{ inventory_hostname }} --ipv6={{ bootstrap.ipv6_address }} --ipv6gateway={{ bootstrap.ipv6_gateway }} --nameserver {{ bootstrap.nameserver|join(",") }} --onboot yes
 
 zerombr
 clearpart --all --initlabel
 
-part /boot --ondisk {{ disk }} --size 512 --asprimary --label boot
-part pv.00 --ondisk {{ disk }} --size 12000 --grow --asprimary
+{% if bootstrap.disk.type == "raid1" %}
+{% for disk in bootstrap.disk.disks %}
+part raid.0{{ loop.index }} --ondisk {{ disk }} --size 512 --asprimary
+{% endfor %}
+raid /boot --level 1 --device 0 {% for disk in bootstrap.disk.disks %} raid.0{{ loop.index }} {% endfor %}
+
+{% for disk in bootstrap.disk.disks %}
+part raid.1{{ loop.index }} --ondisk sda --size 30000 --grow --asprimary
+{% endfor %}
+raid pv.00 --level 1 --device 1 {% for disk in bootstrap.disk.disks %} raid.0{{ loop.index }} {% endfor %}
+{% endif %}
+
+{% if bootstrap.disk.type == "single" %}
+part /boot --ondisk {{ bootstrap.disk.disks[0] }} --size 512 --asprimary --label boot
+part pv.00 --ondisk {{ bootstrap.disk.disks[0] }} --size 12000 --grow --asprimary
+{% endif %}
 
 volgroup lvm.{{ inventory_hostname_short }} pv.00
 
@@ -57,14 +71,14 @@ set -x -v
 
 # Create .ssh
 install -d --mode=700 /root/.ssh
-install -d --owner=mafalb --group=mafalb --mode=700 /home/mafalb/.ssh
+install -d --owner={{ bootstrap.initial_user }} --group={{ bootstrap.initial_user }} --mode=700 /home/{{ bootstrap.initial_user }}/.ssh
 
 cat > /root/.ssh/authorized_keys << PUBLIC_KEY
-    ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAqBKLbgm/95GnBGIMYWgE2EJAKRdczIQn/1os53H9wHR7/d8BN4NUQVaeKvoBku/FR1SaC/K8iEE/YDrOcq4oQ5Q8sDOYpf8iMlfit8uo09ZtY4REk0zo54VwDGsaxJuk7fZi4UVWAVe73zH8Af/zoFwA4kp7Lg5UWDrk0wAz3WdSROu7Eh/xvBTdwoJTV9bOT+DjB7IdyGjBpT3fAnIkBdDPcFfhVCiDPGaL3r6E6T/FmjwXIK7urrRdggQ0aVdujwNrCemVODouTe0dyfPGtx+yN/yHLe1PSY+MuIdQGpcXqLHFwYTLwK/X7NG+Mq2+geLYyaSB5XlStMjFkZrpuQ== mafalb
+	{{ bootstrap.ssh_pubkey.initial_user }}
     PUBLIC_KEY
 
-cat > /home/mafalb/.ssh/authorized_keys <<- PUBLIC_KEY
-	ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAqBKLbgm/95GnBGIMYWgE2EJAKRdczIQn/1os53H9wHR7/d8BN4NUQVaeKvoBku/FR1SaC/K8iEE/YDrOcq4oQ5Q8sDOYpf8iMlfit8uo09ZtY4REk0zo54VwDGsaxJuk7fZi4UVWAVe73zH8Af/zoFwA4kp7Lg5UWDrk0wAz3WdSROu7Eh/xvBTdwoJTV9bOT+DjB7IdyGjBpT3fAnIkBdDPcFfhVCiDPGaL3r6E6T/FmjwXIK7urrRdggQ0aVdujwNrCemVODouTe0dyfPGtx+yN/yHLe1PSY+MuIdQGpcXqLHFwYTLwK/X7NG+Mq2+geLYyaSB5XlStMjFkZrpuQ== mafalb
+cat > /home/{{ bootstrap.initial_user }}/.ssh/authorized_keys <<- PUBLIC_KEY
+	{{ bootstrap.ssh_pubkey.initial_user }}
 	PUBLIC_KEY
 
 # Disable authentication with Passwords
